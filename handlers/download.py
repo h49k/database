@@ -155,7 +155,14 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if len(parts) < 3:
             return
         quality = parts[1]
-        url     = parts[2]
+        url_key = parts[2]
+
+        # استرجاع الـ URL الكامل من التخزين المؤقت
+        url_store = ctx.bot_data.get("url_store", {})
+        url = url_store.get(url_key)
+        if not url:
+            await query.edit_message_text("❌ انتهت صلاحية الرابط، أرسله من جديد.")
+            return
 
         # حفظ المستخدم
         upsert_user(user.id, user.username, user.full_name)
@@ -302,22 +309,24 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uploader = info.get("uploader") or info.get("channel") or "—"
 
     # ── أزرار الجودة ──────────────────────────────────────────────────────────
-    # نرمّز الـ URL في الـ callback_data (مع اقتصار 64 حرف لـ Telegram)
-    # لذا نستخدم ctx.user_data لتخزين الرابط
-    ctx.user_data["pending_url"] = url
+    # تخزين الرابط في bot_data مع key قصير لتجنب تجاوز 64 بايت في callback_data
+    import hashlib
+    url_key = hashlib.md5(url.encode()).hexdigest()[:12]
+    if "url_store" not in ctx.bot_data:
+        ctx.bot_data["url_store"] = {}
+    ctx.bot_data["url_store"][url_key] = url
 
-    # نستخدم index بدلاً من الـ URL كاملة في callback_data
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🎵 صوت MP3",    callback_data=f"dl_audio_{url}"),
+            InlineKeyboardButton("🎵 صوت MP3",    callback_data=f"dl_audio_{url_key}"),
         ],
         [
-            InlineKeyboardButton("📱 360p",       callback_data=f"dl_360_{url}"),
-            InlineKeyboardButton("🖥️ 720p",       callback_data=f"dl_720_{url}"),
-            InlineKeyboardButton("🎬 1080p",      callback_data=f"dl_1080_{url}"),
+            InlineKeyboardButton("📱 360p",       callback_data=f"dl_360_{url_key}"),
+            InlineKeyboardButton("🖥️ 720p",       callback_data=f"dl_720_{url_key}"),
+            InlineKeyboardButton("🎬 1080p",      callback_data=f"dl_1080_{url_key}"),
         ],
         [
-            InlineKeyboardButton("⭐ أفضل جودة",  callback_data=f"dl_best_{url}"),
+            InlineKeyboardButton("⭐ أفضل جودة",  callback_data=f"dl_best_{url_key}"),
         ],
     ])
 
