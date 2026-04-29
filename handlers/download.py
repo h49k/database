@@ -27,6 +27,22 @@ URL_REGEX = re.compile(
 
 IG_USERNAME = os.getenv("IG_USERNAME", "")
 IG_PASSWORD = os.getenv("IG_PASSWORD", "")
+IG_COOKIES  = os.getenv("IG_COOKIES", "")   # كوكيز Instagram من Railway
+
+# كتابة الكوكيز لملف مؤقت عند البدء
+_IG_COOKIES_FILE = os.path.join(TMP_DIR, "ig_cookies.txt")
+if IG_COOKIES:
+    try:
+        with open(_IG_COOKIES_FILE, "w") as f:
+            f.write("# Netscape HTTP Cookie File\n")
+            for pair in IG_COOKIES.split(";"):
+                pair = pair.strip()
+                if "=" not in pair:
+                    continue
+                name, value = pair.split("=", 1)
+                f.write(f".instagram.com\tTRUE\t/\tTRUE\t2099999999\t{name.strip()}\t{value.strip()}\n")
+    except Exception:
+        _IG_COOKIES_FILE = ""
 
 
 def detect_platform(url: str) -> dict | None:
@@ -57,9 +73,11 @@ def get_ydl_opts(output_path: str, quality: str = "best", url: str = "") -> dict
 
     # إعدادات خاصة بـ Instagram
     if url and "instagram" in url.lower():
-        if IG_USERNAME and IG_PASSWORD:
-            base["username"] = fooz5522n
-            base["password"] = hmzhmomad
+        if _IG_COOKIES_FILE and os.path.exists(_IG_COOKIES_FILE):
+            base["cookiefile"] = _IG_COOKIES_FILE
+        elif IG_USERNAME and IG_PASSWORD:
+            base["username"] = IG_USERNAME
+            base["password"] = IG_PASSWORD
 
     if quality == "audio":
         base.update({
@@ -206,7 +224,7 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
                 f"{platform['emoji']} *{platform['name']}*\n"
                 f"📦 الحجم: `{size_mb:.1f} MB`\n"
                 f"🎯 الجودة: `{quality}`\n\n"
-                "✅ تم التحميل بواسطة @downloadaillbot"
+                "✅ تم التحميل بواسطة @MediaDropBot"
             )
 
             ext = Path(filepath).suffix.lower()
