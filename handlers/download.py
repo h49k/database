@@ -33,7 +33,11 @@ def detect_platform(url: str) -> dict | None:
     return {"name": "موقع آخر", "emoji": "🌐", "color": "⚪", "key": "other"}
 
 
-def get_ydl_opts(output_path: str, quality: str = "best") -> dict:
+IG_USERNAME = os.getenv("IG_USERNAME", "")
+IG_PASSWORD = os.getenv("IG_PASSWORD", "")
+
+
+def get_ydl_opts(output_path: str, quality: str = "best", url: str = "") -> dict:
     """إعدادات yt-dlp حسب الجودة"""
     base = {
         "outtmpl": output_path,
@@ -43,14 +47,21 @@ def get_ydl_opts(output_path: str, quality: str = "best") -> dict:
         "max_filesize": MAX_FILESIZE,
         "socket_timeout": 30,
         "retries": 3,
-        "cookiesfrombrowser": None,
         "http_headers": {
             "User-Agent": (
-                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
-                "AppleWebKit/537.36 Chrome/120.0.0.0 Safari/537.36"
+                "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) "
+                "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 "
+                "Mobile/15E148 Safari/604.1"
             )
         },
     }
+
+    # إعدادات خاصة بـ Instagram
+    if url and "instagram" in url.lower():
+        if IG_USERNAME and IG_PASSWORD:
+            base["username"] = IG_USERNAME
+            base["password"] = IG_PASSWORD
+
 
     if quality == "audio":
         base.update({
@@ -93,7 +104,7 @@ async def download_video(url: str, quality: str, user_id: int) -> tuple[str | No
     حمّل الفيديو وارجع (filepath, error_msg)
     """
     out_template = os.path.join(TMP_DIR, f"{user_id}_%(id)s.%(ext)s")
-    opts = get_ydl_opts(out_template, quality)
+    opts = get_ydl_opts(out_template, quality, url)
 
     try:
         loop = asyncio.get_event_loop()
@@ -132,6 +143,8 @@ async def download_video(url: str, quality: str, user_id: int) -> tuple[str | No
             return None, "🔞 هذا الفيديو محمي بقيود العمر"
         if "copyright" in msg.lower():
             return None, "©️ هذا الفيديو محمي بحقوق النشر"
+        if "login" in msg.lower() or "rate" in msg.lower() or "not available" in msg.lower():
+            return None, "🔐 Instagram يطلب تسجيل دخول.\nجرب رابطاً آخر أو تواصل مع المطور."
         return None, f"❌ فشل التحميل:\n`{msg[:200]}`"
     except Exception as e:
         logger.error(f"Download error: {e}")
@@ -155,14 +168,7 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         if len(parts) < 3:
             return
         quality = parts[1]
-        url_key = parts[2]
-
-        # استرجاع الـ URL الكامل من التخزين المؤقت
-        url_store = ctx.bot_data.get("url_store", {})
-        url = url_store.get(url_key)
-        if not url:
-            await query.edit_message_text("❌ انتهت صلاحية الرابط، أرسله من جديد.")
-            return
+        url     = parts[2]
 
         # حفظ المستخدم
         upsert_user(user.id, user.username, user.full_name)
@@ -309,24 +315,22 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
     uploader = info.get("uploader") or info.get("channel") or "—"
 
     # ── أزرار الجودة ──────────────────────────────────────────────────────────
-    # تخزين الرابط في bot_data مع key قصير لتجنب تجاوز 64 بايت في callback_data
-    import hashlib
-    url_key = hashlib.md5(url.encode()).hexdigest()[:12]
-    if "url_store" not in ctx.bot_data:
-        ctx.bot_data["url_store"] = {}
-    ctx.bot_data["url_store"][url_key] = url
+    # نرمّز الـ URL في الـ callback_data (مع اقتصار 64 حرف لـ Telegram)
+    # لذا نستخدم ctx.user_data لتخزين الرابط
+    ctx.user_data["pending_url"] = url
 
+    # نستخدم index بدلاً من الـ URL كاملة في callback_data
     kb = InlineKeyboardMarkup([
         [
-            InlineKeyboardButton("🎵 صوت MP3",    callback_data=f"dl_audio_{url_key}"),
+            InlineKeyboardButton("🎵 صوت MP3",    callback_data=f"dl_audio_{url}"),
         ],
         [
-            InlineKeyboardButton("📱 360p",       callback_data=f"dl_360_{url_key}"),
-            InlineKeyboardButton("🖥️ 720p",       callback_data=f"dl_720_{url_key}"),
-            InlineKeyboardButton("🎬 1080p",      callback_data=f"dl_1080_{url_key}"),
+            InlineKeyboardButton("📱 360p",       callback_data=f"dl_360_{url}"),
+            InlineKeyboardButton("🖥️ 720p",       callback_data=f"dl_720_{url}"),
+            InlineKeyboardButton("🎬 1080p",      callback_data=f"dl_1080_{url}"),
         ],
         [
-            InlineKeyboardButton("⭐ أفضل جودة",  callback_data=f"dl_best_{url_key}"),
+            InlineKeyboardButton("⭐ أفضل جودة",  callback_data=f"dl_best_{url}"),
         ],
     ])
 
@@ -338,4 +342,4 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "🎯 *اختر جودة التحميل:*",
         parse_mode="Markdown",
         reply_markup=kb
-    )
+        )
