@@ -314,10 +314,15 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         )
         return
 
-    title    = (info.get("title") or "بدون عنوان")[:60]
+    def _esc(text: str) -> str:
+        for ch in ['_', '*', '`', '[', ']']:
+            text = text.replace(ch, f'\\{ch}')
+        return text
+
+    title    = _esc((info.get("title") or "بدون عنوان")[:60])
     duration = info.get("duration", 0)
     dur_str  = f"{int(duration)//60}:{int(duration)%60:02d}" if duration else "غير معروف"
-    uploader = info.get("uploader") or info.get("channel") or "—"
+    uploader = _esc(info.get("uploader") or info.get("channel") or "—")
 
     # ── تخزين الـ URL بـ key قصير لتجنب تجاوز حد 64 بايت ──────────────────
     url_key = hashlib.md5(url.encode()).hexdigest()[:12]
@@ -347,4 +352,4 @@ async def download_handler(update: Update, ctx: ContextTypes.DEFAULT_TYPE):
         "🎯 *اختر جودة التحميل:*",
         parse_mode="Markdown",
         reply_markup=kb
-        )
+    )
